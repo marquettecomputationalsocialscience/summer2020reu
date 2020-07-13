@@ -1,0 +1,184 @@
+---
+title: "Foster Exploration"
+author: "Charlie Repaci"
+date: "6/21/2020"
+output: html_document
+---
+
+```{r, warning = FALSE, message = FALSE}
+# Load any R Packages you may need
+library(tidyverse)
+library(mosaic)
+library(moderndive)
+library(ggplot2)
+library(dplyr)
+library(haven)
+library(forcats)
+```
+
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Load any datasets you may need
+setwd("/Users/carly/Desktop/107 Factors that Influence the Decision Not to Substantiate a CPS Referral/Data/")
+
+phasei <- read_sas("phasei_c.sas7bdat", catalog_file = "formats.sas7bcat")
+phaseii <- read_sas("phaseii.sas7bdat", catalog_file = "formats.sas7bcat")
+phaseiii <- read_sas("phaseiii.sas7bdat", catalog_file = "formats.sas7bcat")
+
+dim(phasei)
+dim(phaseii)
+dim(phaseiii)
+
+names(phasei)[1:664] = tolower(names(phasei)[1:664])
+names(phaseii)[1:1012] = tolower(names(phaseii)[1:1012])
+names(phaseiii)[1:780] = tolower(names(phaseiii)[1:780])
+```
+
+```{r}
+setwd("/Users/carly/Desktop/110 Longitudinal Pathways to Resilience in Maltreated Children/data/")
+
+ds110<- read_sas("ds110.sas7bdat", catalog_file = "formats.sas7bcat")
+dim(ds110)
+names(ds110)[1:159] = tolower(names(ds110)[1:159])
+ds110[ds110 == 999] = NA
+```
+***
+***
+***
+
+# 107 Phase I
+
+```{r}
+# 2 July 2020
+phasei$risktag <- ordered(phasei$risktag,  levels = c("0", "1", "2", "3", "4", "5", "7"))
+
+summary(phasei$daysopd)
+summary(phasei$newage)
+summary(phasei$risktag)
+
+ggplot(phasei, aes(newage)) + geom_density(fill="lightblue")
+ggplot(phasei, aes(x=daysopd, y=newage, color=phasei$risktag)) + geom_point()
+
+phaseirmv = filter(phasei, daysopd >= -67)
+ggplot(phaseirmv, aes(x=daysopd, y=newage, color=risktag)) + geom_point()
+
+ggplot(phaseirmv, aes(risktag, daysopd, fill=risktag)) + geom_boxplot()
+```
+
+```{r}
+v8c2 <- ifelse(phasei$v8c2 == 1, "professional", 
+                  ifelse(phasei$v8c2 == 2, "community", NA))
+nsource <- ifelse(phasei$nsource == 1, "first hand", 
+                  ifelse(phasei$nsource == 2, "second hand",
+                  ifelse(phasei$nsource == 3, "circumstantial", 
+                  ifelse(phasei$nsource == 4, "victim disclosure", NA))))
+nfind <- ifelse(phasei$nfind == 1, "founded", 
+                  ifelse(phasei$nfind == 2, "inconclusive",
+                  ifelse(phasei$nfind == 3, "unfounded", NA)))
+tempset = data.frame(v8c2, nsource, nfind)
+head(tempset)
+```
+
+```{r}
+tempset %>%
+  group_by(v8c2) %>%
+  count(nsource, nfind, sort=TRUE)
+```
+
+```{r}
+tally(v8c2, format="percent")
+tally(nsource~v8c2, format="percent")
+
+comtemp = filter(tempset, v8c2 == "community")
+protemp = filter(tempset, v8c2 == "professional")
+
+tally(nsource~nfind, data=comtemp, format="percent")
+tally(nsource~nfind, data=protemp, format="percent")
+```
+
+
+***
+***
+***
+
+# 107 Phase II
+
+```{r}
+# 6 July 2020
+
+tally(phaseii$v2) # 1--male, 2--female
+tally(phaseii$v4a) # 1--afr.amer, 2--asian/poly, 3--cauc, 4--hisp/lat, 5--nat.amer, 6--midd.east, 7--multi
+summary(phaseii$v5) # cases currently active or open
+summary(phaseii$v6) # new referrals assigned per month
+tally(phaseii$v7a) # invest time affects find dec 1--yes, 2--no, 3--somewhat
+tally(phaseii$v8a) # lack of resource affects find dec 1--yes, 2--no
+
+```
+
+```{r}
+# Least likely to make founded dec
+phaseii$v9alab <- ifelse(phaseii$v9a == 1, "sex abuse", 
+                  ifelse(phaseii$v9a == 2, "phys abuse",
+                  ifelse(phaseii$v9a == 3, "lack sup",
+                  ifelse(phaseii$v9a == 4, "fail prov",
+                  ifelse(phaseii$v9a == 5, "med neg",
+                  ifelse(phaseii$v9a == 6, "other",
+                  ifelse(phaseii$v9a == 7, "all types", NA)))))))
+
+ggplot(phaseii, aes(x=fct_infreq(v9alab), fill=v9alab)) + geom_bar()
+```
+
+```{r}
+# investigated, unable to make founded decision?
+tally(phaseii$v23a)
+
+# finding of that case's decision
+v23bcat <- ifelse(phaseii$v23b == 1, "inconclusive", 
+                  ifelse(phaseii$v23b == 2, "unfounded",
+                  ifelse(phaseii$v23b == 3, "other",
+                  ifelse(phaseii$v23b == 4, "didn't make finding",
+                  ifelse(phaseii$v23b == 5, "don't remember", NA)))))
+tally(v23bcat)
+
+# which may make you consider making the decison not to substantiate even though you believed CA/N occured?
+tally(phaseii$v24a) # not at risk of future serious/severe CA/N
+tally(phaseii$v24b) # family adressing or resolved issues
+tally(phaseii$v24c) # Law enforcement decided not to pursue criminal investigation
+tally(phaseii$v24d) # caregiver doing best they can for child with behavior issues
+tally(phaseii$v24e) # caregiver doing best they can but has mental/emotional issues
+tally(phaseii$v24f) # caregiver doing best they can but has developmental delays
+tally(phaseii$v24g) # do not have enough proof to pursue further action
+tally(phaseii$v24h) # family willing to voluntarily engage in services to reduce risk to child
+```
+
+
+```{r}
+v25acat <- ifelse(phaseii$v25a == 1, "no cred", 
+                  ifelse(phaseii$v25a == 2, "cred", NA))
+v25dcat <- ifelse(phaseii$v25d == 1, "affected", 
+                  ifelse(phaseii$v25d == 2, "unaffected", NA))
+v25ecat <- ifelse(phaseii$v25e == 1, "founded", 
+                  ifelse(phaseii$v25e == 2, "inconclusive",
+                  ifelse(phaseii$v25e == 3, "unfounded",
+                  ifelse(phaseii$v25e == 4, "multiple findings",
+                  ifelse(phaseii$v25e == 5, "didn't make finding/don't remember/depends", NA)))))
+tempset = data.frame(v25acat, v25dcat, v25ecat)
+head(tempset)
+```
+
+```{r}
+tempset %>%
+  group_by(v25acat) %>%
+  count(v25dcat, v25ecat, sort=TRUE)
+```
+
+***
+***
+***
+
+# 110
+
+```{r}
+
+```
+
