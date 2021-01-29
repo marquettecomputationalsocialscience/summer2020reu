@@ -1,0 +1,269 @@
+---
+title: "12/22"
+author: "Charlie Repaci"
+date: "12/20/2020"
+output: html_document
+---
+
+```{r, warning = FALSE, message = FALSE}
+# Load any R Packages you may need
+library(tidyverse)
+library(mosaic)
+library(moderndive)
+library(ggplot2)
+library(dplyr)
+library(haven)
+library(forcats)
+library(labelled)
+library(ggmosaic)
+library(corrplot)
+library(caret)
+library(caTools)
+library(leaps)
+```
+
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Load any datasets you may need
+setwd("/Users/carly/Desktop/Marquette REU/107 Factors that Influence the Decision Not to Substantiate a CPS Referral/Data/")
+
+phasei <- read_sas("phasei_c.sas7bdat", catalog_file = "formats.sas7bcat")
+
+dim(phasei)
+
+names(phasei)[1:664] = tolower(names(phasei)[1:664])
+phasei = to_factor(phasei)
+phasei = mutate_all(phasei, na_if, "n/a")
+```
+
+***
+***
+***
+
+Separate low (0, 2, 3) and high (3, 4, 5) risks and select needed columns
+Make WARM variables numeric
+```{r}
+phasei$overallx = ifelse(phasei$overallr == "NO RISK" | phasei$overallr == "LOW" | phasei$overallr == "MOD LOW", 0, 1)
+tally(phasei$overallr)
+tally(phasei$overallx)
+
+data = select(phasei, overallx,nrisk1,nrisk2,nrisk3,nrisk4,nrisk5,nrisk6,nrisk7,nrisk8,nrisk9,nrisk10,nrisk11,nrisk12,nrisk13,nrisk14,nrisk15,nrisk16,nrisk17,nrisk18,nrisk19,nrisk20,nrisk21,nrisk22,nrisk23,nrisk24,nrisk25,nrisk26,nrisk27,nrisk28,nrisk29,nrisk30,nrisk31,nrisk32,nrisk33,nrisk34,nrisk35,nrisk36,nrisk37,nrisk38,nrisk39,nrisk40,nrisk41,nrisk42,nrisk43,nrisk44,nrisk45,nrisk46,nrisk47,nrisk48,nrisk49,nrisk50,nrisk51,nrisk52,nrisk53,nrisk54,nrisk55,nrisk56,nrisk57,nrisk58,nrisk59)
+
+dim(data)
+
+# Credit: https://stackoverflow.com/questions/55634193/replace-strings-with-values-across-multiple-columns-at-once
+data %>%
+   mutate_all(~case_when(. %in% "NO RISK" ~ '0', 
+                   . == "LOW" ~ '1', 
+                   . == "MOD LOW" ~ '2', 
+                   . == "MOD" ~ '3', 
+                   . == "MOD HIGH" ~ '4',
+                   . == "HIGH" ~ '4', 
+                   TRUE ~ NA_character_))
+
+data = mutate_all(data, as.numeric)
+data = na.omit(data)
+```
+
+See if any are correlated
+```{r}
+related = round(cor(data, use = 'pairwise.complete.obs'), digits = 2)
+
+corrplot(related, method="shade", type="upper")
+
+findCorrelation(related, cutoff=0.5, names = TRUE)
+
+highrelated = round(cor(
+              select(data,overallx,nrisk39,nrisk41,nrisk28,nrisk43,nrisk31,nrisk29,nrisk19,nrisk47,nrisk30,nrisk45,nrisk40,nrisk42,nrisk55,nrisk17,nrisk51,nrisk33,nrisk49,nrisk57,nrisk10,nrisk11,nrisk53,nrisk36,nrisk25,nrisk56,nrisk23,nrisk46,nrisk35,nrisk6,nrisk7,nrisk15,nrisk2,nrisk20,nrisk26,nrisk13,nrisk58,nrisk1), 
+              select(data,overallx,nrisk39,nrisk41,nrisk28,nrisk43,nrisk31,nrisk29,nrisk19,nrisk47,nrisk30,nrisk45,nrisk40,nrisk42,nrisk55,nrisk17,nrisk51,nrisk33,nrisk49,nrisk57,nrisk10,nrisk11,nrisk53,nrisk36,nrisk25,nrisk56,nrisk23,nrisk46,nrisk35,nrisk6,nrisk7,nrisk15,nrisk2,nrisk20,nrisk26,nrisk13,nrisk58,nrisk1), use = 'pairwise.complete.obs'), digits = 1)
+highrelated
+corrplot(highrelated, method="shade", type="upper")
+
+highrel2 = cor(select(data, overallx, nrisk17, nrisk18, nrisk19, nrisk1, nrisk21, nrisk22, nrisk23, nrisk24, nrisk25, nrisk4, nrisk27, nrisk28, nrisk29, nrisk30, nrisk31, nrisk32, nrisk33, nrisk2, nrisk35, nrisk36, nrisk37, nrisk38, nrisk39, nrisk40, nrisk41, nrisk42, nrisk43, nrisk44, nrisk45, nrisk46, nrisk47, nrisk48, nrisk49, nrisk50, nrisk51, nrisk52, nrisk53, nrisk54, nrisk55, nrisk56, nrisk57, nrisk3, nrisk59, nrisk13, nrisk14), select(data, overallx, nrisk17, nrisk18, nrisk19, nrisk1, nrisk21, nrisk22, nrisk23, nrisk24, nrisk25, nrisk4, nrisk27, nrisk28, nrisk29, nrisk30, nrisk31, nrisk32, nrisk33, nrisk2, nrisk35, nrisk36, nrisk37, nrisk38, nrisk39, nrisk40, nrisk41, nrisk42, nrisk43, nrisk44, nrisk45, nrisk46, nrisk47, nrisk48, nrisk49, nrisk50, nrisk51, nrisk52, nrisk53, nrisk54, nrisk55, nrisk56, nrisk57, nrisk3, nrisk59, nrisk13, nrisk14), use = 'pairwise.complete.obs')
+corrplot(highrel2, method="shade", type="upper")
+```
+
+80/20 split on train and test data sets
+Source: https://www.analytics-tuts.com/how-to-split-train-and-test-data-in-r/
+```{r}
+data$overallx = as_factor(data$overallx)
+tempdat = sort(sample(nrow(data), nrow(data)*.8))
+train<-data[tempdat,]
+test<-data[-tempdat,]
+dim(train)
+dim(test)
+```
+
+logistic regression model using training data set
+```{r}
+tenfold = trainControl(method = "cv", number = 10)
+allvar = train(overallx~., data = train, method = "glm", trControl = tenfold)
+```
+
+Wald-Z test (p-val at 0.05)
+```{r}
+summary(allvar)
+```
+nrisk15 + nrisk36 + nrisk1 + nrisk50 + nrisk25 + nrisk26 + nrisk24 + nrisk20 + nrisk57 + nrisk6 marked with significance
+
+```{r}
+allvarpred = predict(allvar, test)
+tally(test$overallx~allvarpred, format='percent')
+```
+
+
+Importance (quantifies the impact of the predictor on the model not significance as a predictor of outcome)
+```{r}
+importance = varImp(allvar, sort=TRUE)
+importance
+plot(importance)
+```
+
+```{r}
+zvar = train(overallx~nrisk1+ nrisk6+ nrisk8+ nrisk11+ nrisk14+ nrisk15+ nrisk20+ nrisk25+ nrisk32+ nrisk35+ nrisk36+ nrisk50+ nrisk54+ nrisk57, data = train, method = "glm", trControl = tenfold)
+
+summary(zvar)
+
+zvarpred = predict(zvar, test)
+tally(test$overallx~zvarpred, format='percent')
+```
+
+```{r}
+exp(0.37228)
+exp(0.09732)
+exp(0.08395)
+exp(0.10415)
+exp(-0.10807)
+exp(0.28683)
+exp(-0.07292)
+exp(0.03572)
+exp(0.27069)
+exp(0.15087)
+exp(0.31871)
+exp(0.32712)
+exp(-0.14415)
+exp(-0.11149)
+```
+
+
+***
+***
+***
+
+backward stepwise variable selection
+```{r}
+tenfoldrfe = rfeControl(method = "cv", number = 10)
+backselect = rfe(overallx~., data = train, rfeControl = tenfoldrfe)
+backselect$results
+backselect$bestTune
+summary(backselect)
+```
+
+manual backward selection
+```{r}
+fitall = glm(overallx~., family = binomial, data = train)
+step(fitall, direction = "backward")
+```
+
+test manual backward selection model
+```{r}
+backvar = train(overallx ~ nrisk1 + nrisk5 + nrisk6 + nrisk7 + 
+    nrisk8 + nrisk11 + nrisk14 + nrisk15 + nrisk20 + nrisk24 + 
+    nrisk25 + nrisk26 + nrisk31 + nrisk32 + nrisk35 + nrisk36 + 
+    nrisk41 + nrisk42 + nrisk46 + nrisk50 + nrisk54 + nrisk57 + 
+    nrisk59, data = train, method = "glm", trControl = tenfold)
+
+summary(backvar)
+
+backvarpred = predict(backvar, test)
+tally(test$overallx~backvarpred, format='percent')
+```
+
+```{r}
+exp(0.39968)
+exp(-0.08800)
+exp(0.12972)
+exp(-0.12638)
+exp(0.10954)
+exp(0.10642)
+exp(-0.11015)
+exp(0.30922)
+exp(-0.08868)
+exp(-0.10202)
+exp(0.14137)
+exp(-0.10416)
+exp(-0.10176)
+exp(0.27730)
+exp(0.15817)
+exp(0.34926)
+exp(0.11414)
+exp(0.13677)
+exp(0.06968)
+exp(0.32522)
+exp(-0.14439)
+exp(-0.14595)
+exp(-0.08402)
+
+```
+
+
+forward stepwise variable selection
+doesn't seem to have a built in function that can be used with cross validation
+```{r}
+startselection = glm(overallx~1, binomial, train)
+summary(startselection)
+step(startselection, direction = "forward", scope = formula(allvar))
+```
+
+test best forward selection model
+```{r}
+forvar = train(overallx ~ nrisk36 + nrisk15 + nrisk50 + nrisk1 + 
+    nrisk32 + nrisk14 + nrisk42 + nrisk26 + nrisk54 + nrisk6 + 
+    nrisk7 + nrisk8 + nrisk20 + nrisk46 + nrisk24 + nrisk25 + 
+    nrisk57 + nrisk18 + nrisk17 + nrisk35 + nrisk59 + nrisk33 + 
+    nrisk23 + nrisk40, data = train, method = "glm", trControl = tenfold)
+
+summary(forvar)
+
+forvarpred = predict(forvar, test)
+tally(test$overallx~forvarpred, format='percent')
+```
+
+```{r}
+exp(0.33207)
+exp(0.29787)
+exp(0.31875)
+exp(0.42164)
+exp(0.24198)
+exp(-0.10489)
+exp(0.12226)
+exp(-0.09677)
+exp(-0.12634)
+exp(0.14314)
+exp(-0.15466)
+exp(0.10944)
+exp(-0.08768)
+exp(0.05991)
+exp(-0.10502)
+exp(0.17431)
+exp(-0.12944)
+exp(-0.01225)
+exp(-0.04592)
+exp(0.15762)
+exp(-0.08689)
+exp(0.05449)
+exp(-0.04961)
+exp(0.11031)
+```
+
+
+
+
+
+
+
+
+
+
+
+

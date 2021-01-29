@@ -1,0 +1,252 @@
+---
+title: "1/21"
+author: "Charlie Repaci"
+date: "1/21/2021"
+output: html_document
+---
+
+```{r, warning = FALSE, message = FALSE}
+# Load any R Packages you may need
+library(tidyverse)
+library(mosaic)
+library(moderndive)
+library(ggplot2)
+library(dplyr)
+library(haven)
+library(forcats)
+library(labelled)
+library(ggmosaic)
+library(corrplot)
+library(caret)
+library(caTools)
+library(leaps)
+```
+
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Load any datasets you may need
+setwd("/Users/carly/Desktop/Marquette REU/107 Factors that Influence the Decision Not to Substantiate a CPS Referral/Data/")
+
+phasei <- read_sas("phasei_c.sas7bdat", catalog_file = "formats.sas7bcat")
+
+dim(phasei)
+
+names(phasei)[1:664] = tolower(names(phasei)[1:664])
+phasei = to_factor(phasei)
+phasei = mutate_all(phasei, na_if, "n/a")
+```
+
+***
+***
+***
+
+Separate low (0, 2, 3) and high (3, 4, 5) risks and select needed columns
+Make WARM variables numeric (SEE 12-22 FOR MORE)
+```{r}
+phasei$overallx = ifelse(phasei$overallr == "NO RISK" | phasei$overallr == "LOW" | phasei$overallr == "MOD LOW", 0, 1)
+tally(phasei$overallr)
+tally(phasei$overallx)
+
+data = select(phasei, overallx,nrisk1,nrisk2,nrisk3,nrisk4,nrisk5,nrisk6,nrisk7,nrisk8,nrisk9,nrisk10,nrisk11,nrisk12,nrisk13,nrisk14,nrisk15,nrisk16,nrisk17,nrisk18,nrisk19,nrisk20,nrisk21,nrisk22,nrisk23,nrisk24,nrisk25,nrisk26,nrisk27,nrisk28,nrisk29,nrisk30,nrisk31,nrisk32,nrisk33,nrisk34,nrisk35,nrisk36,nrisk37,nrisk38,nrisk39,nrisk40,nrisk41,nrisk42,nrisk43,nrisk44,nrisk45,nrisk46,nrisk47,nrisk48,nrisk49,nrisk50,nrisk51,nrisk52,nrisk53,nrisk54,nrisk55,nrisk56,nrisk57,nrisk58,nrisk59)
+
+dim(data)
+
+# Credit: https://stackoverflow.com/questions/55634193/replace-strings-with-values-across-multiple-columns-at-once
+data %>%
+   mutate_all(~case_when(. %in% "NO RISK" ~ '0', 
+                   . == "LOW" ~ '1', 
+                   . == "MOD LOW" ~ '2', 
+                   . == "MOD" ~ '3', 
+                   . == "MOD HIGH" ~ '4',
+                   . == "HIGH" ~ '4', 
+                   TRUE ~ NA_character_))
+
+data$ID = c(1:nrow(data))
+
+data = mutate_all(data, as.numeric)
+data = na.omit(data)
+data
+```
+
+***
+***
+***
+
+# Exploratory Factor Analysis
+
+Process based on theory outlined here: https://www.youtube.com/watch?v=Q2JBLuQDUvI
+and hard code outlined here: https://www.youtube.com/watch?v=Ilf1XR-K3ps&amp%3Bt=254s
+
+1. Run PCA to determine number of factors
+```{r}
+warm.pca = princomp(data)
+summary(warm.pca)
+# note that proportion of variance decreases as number of components increases
+plot(warm.pca)
+# based on plot maybe 3 or 4 factors
+```
+
+
+2. Run factor analysis based on number of factors
+```{r}
+#######
+# Devansh's function
+# Exploratory factor analysis
+factanal_summary <- function(num_factors, df) {
+ fit <- factanal(df, num_factors, 'promax')
+ print(fit, digits=2, cutoff=.3, sort=TRUE)
+ #return(fit)
+}
+
+#warm.fa3 = factanal(data, factors=3, rotation="varimax")
+factanal_summary(4, data)
+# they all have fairly high uniqueness
+# I took factors as high as 28 (without error of too many factors) 
+# and the number of factors was still significant according to the p-value; 
+# is this influenced by that they all had high uniqueness?
+```
+
+3. Get scores via regression
+```{r}
+warm.fa3.score = factanal(data, factors=3, rotation="varimax", scores="regression")
+head(warm.fa3.score$scores)
+# scores are measurements from an unseen variable that we are trying to estimate
+```
+
+Follow up question: How do we use this output to aid in refining the model?
+
+***
+***
+***
+
+# Try models again removing income (at Melanie's suggestion)
+
+WITH INCOME
+Combining 10 fold cross validation with forward/backward selection
+https://thatdatatho.com/2018/10/04/cross-validation-the-wrong-way-right-way-feature-selection/ 
+```{r}
+confusion_matrices = list()
+accuracy = c()
+
+#data$overallx = as_factor(data$overallx)
+
+for (i in c(1:10)) {
+  folds = caret::createFolds(data$overallx, k=10)
+  
+  test = data[data$ID %in% folds[[i]],]
+  train = data[data$ID %in% unlist(folds[-i]),]
+  
+  data.frame(correlation = cor(train, use = 'pairwise.complete.obs')[, "overallx"]) %>%
+    tibble::rownames_to_column(., var = "predictor") %>%
+    dplyr::arrange(., desc(correlation)) -> df_correlation
+  
+  df_highest_correlation <- c(df_correlation[c(1,2,3,4,5,6),1])
+  print(df_highest_correlation)
+  
+  glm_model = glm(overallx~., family=binomial, data = train[, df_highest_correlation])
+  
+  predictions <- predict(glm_model, newdata = test[,df_highest_correlation], type="response")
+  
+  predictions_rounded <- as.numeric(predictions >= 0.5)
+  
+  df <- data.frame(cbind(test$overallx, predictions_rounded))
+  df <- lapply(df, as.factor)
+  confusion_matrices[[i]] <- caret::confusionMatrix(df[[2]], df[[1]])
+  accuracy[[i]] <- confusion_matrices[[i]]$overall["Accuracy"]
+}
+
+```
+```{r}
+names(accuracy) <- c("Fold 1", "Fold 2", "Fold 3", "Fold 4", "Fold 5", "Fold 6", "Fold 7", "Fold 8", "Fold 9", "Fold 10")
+accuracy %>%
+  pander::pandoc.table()
+```
+
+```{r}
+mean(accuracy)
+
+names(accuracy) <- c("Fold 1", "Fold 2", "Fold 3", "Fold 4", "Fold 5", "Fold 6", "Fold 7", "Fold 8", "Fold 9", "Fold 10")
+barplot(
+  accuracy,
+  ylim = c(0, 1), las = 2,
+  ylab = "Accuracy"
+)
+abline(h = mean(accuracy), col = "red", lty = 2)
+```
+
+***
+***
+***
+
+DATA SET WITHOUT INCOME
+
+```{r}
+phasei$overallx = ifelse(phasei$overallr == "NO RISK" | phasei$overallr == "LOW" | phasei$overallr == "MOD LOW", 0, 1)
+tally(phasei$overallr)
+tally(phasei$overallx)
+
+datai = select(phasei, overallx,nrisk1,nrisk2,nrisk3,nrisk4,nrisk5,nrisk6,nrisk7,nrisk8,nrisk9,nrisk10,nrisk11,nrisk12,nrisk13,nrisk14,nrisk15,nrisk16,nrisk17,nrisk18,nrisk19,nrisk20,nrisk21,nrisk22,nrisk23,nrisk24,nrisk25,nrisk26,nrisk27,nrisk28,nrisk29,nrisk30,nrisk31,nrisk32,nrisk33,nrisk34,nrisk35,nrisk36,nrisk37,nrisk38,nrisk39,nrisk40,nrisk41,nrisk42,nrisk43,nrisk44,nrisk45,nrisk46,nrisk47,nrisk48,nrisk49,nrisk50,nrisk51,nrisk54,nrisk55,nrisk58,nrisk59)
+
+dim(datai)
+
+# Credit: https://stackoverflow.com/questions/55634193/replace-strings-with-values-across-multiple-columns-at-once
+datai %>%
+   mutate_all(~case_when(. %in% "NO RISK" ~ '0', 
+                   . == "LOW" ~ '1', 
+                   . == "MOD LOW" ~ '2', 
+                   . == "MOD" ~ '3', 
+                   . == "MOD HIGH" ~ '4',
+                   . == "HIGH" ~ '4', 
+                   TRUE ~ NA_character_))
+
+datai$ID = c(1:nrow(datai))
+
+datai = mutate_all(datai, as.numeric)
+datai = na.omit(datai)
+datai
+```
+
+***
+***
+***
+
+do not run yet
+```{r}
+confusion_matrices = list()
+accuracy = c()
+
+#datai$overallx = as_factor(datai$overallx)
+
+for (i in c(1:10)) {
+  folds = caret::createFolds(datai$overallx, k=10)
+  
+  test = datai[datai$ID %in% folds[[i]],]
+  train = datai[datai$ID %in% unlist(folds[-i]),]
+  
+  data.frame(correlation = cor(train, use = 'pairwise.complete.obs')[, "overallx"]) %>%
+    tibble::rownames_to_column(., var = "predictor") %>%
+    dplyr::arrange(., desc(correlation)) -> df_correlation
+  
+  df_highest_correlation <- c(df_correlation[c(1,2,3,4,5,6),1])
+  print(df_highest_correlation)
+  
+  glm_model = glm(overallx~., family=binomial, datai = train[, df_highest_correlation])
+  
+  predictions <- predict(glm_model, newdatai = test[,df_highest_correlation], type="response")
+  
+  predictions_rounded <- as.numeric(predictions >= 0.5)
+  
+  df <- datai.frame(cbind(test$overallx, predictions_rounded))
+  df <- lapply(df, as.factor)
+  confusion_matrices[[i]] <- caret::confusionMatrix(df[[2]], df[[1]])
+  accuracy[[i]] <- confusion_matrices[[i]]$overall["Accuracy"]
+}
+
+```
+
+
+
+
+
+
+
