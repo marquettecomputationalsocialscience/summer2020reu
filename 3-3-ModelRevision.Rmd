@@ -1,0 +1,144 @@
+---
+title: "3-3-ModelRevision"
+author: "Charlie Repaci"
+date: "3/2/2021"
+output: html_document
+---
+
+```{r, warning = FALSE, message = FALSE}
+# Load any R Packages you may need
+library(tidyverse)
+library(mosaic)
+library(moderndive)
+library(ggplot2)
+library(dplyr)
+library(haven)
+library(forcats)
+library(labelled)
+library(ggmosaic)
+library(corrplot)
+library(caret)
+library(caTools)
+library(leaps)
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+# Load any datasets you may need
+setwd("/Users/carly/Desktop/Marquette REU/107 Factors that Influence the Decision Not to Substantiate a CPS Referral/Data/")
+
+phasei <- read_sas("phasei_c.sas7bdat", catalog_file = "formats.sas7bcat")
+
+dim(phasei)
+
+names(phasei)[1:664] = tolower(names(phasei)[1:664])
+phasei = to_factor(phasei)
+phasei = mutate_all(phasei, na_if, "n/a")
+```
+
+```{r}
+phasei$overallx = ifelse(phasei$overallr == "NO RISK" | phasei$overallr == "LOW" | phasei$overallr == "MOD LOW", 0, 1)
+tally(phasei$overallr)
+tally(phasei$overallx)
+
+data = select(phasei, overallx,nrisk1,nrisk2,nrisk3,nrisk4,nrisk5,nrisk6,nrisk7,nrisk8,nrisk9,nrisk10,nrisk11,nrisk12,nrisk13,nrisk14,nrisk15,nrisk16,nrisk17,nrisk18,nrisk19,nrisk20,nrisk21,nrisk22,nrisk23,nrisk24,nrisk25,nrisk26,nrisk27,nrisk28,nrisk29,nrisk30,nrisk31,nrisk32,nrisk33,nrisk34,nrisk35,nrisk36,nrisk37,nrisk38,nrisk39,nrisk40,nrisk41,nrisk42,nrisk43,nrisk44,nrisk45,nrisk46,nrisk47,nrisk48,nrisk49,nrisk50,nrisk51,nrisk52,nrisk53,nrisk54,nrisk55,nrisk56,nrisk57,nrisk58,nrisk59)
+
+dim(data)
+
+# Credit: https://stackoverflow.com/questions/55634193/replace-strings-with-values-across-multiple-columns-at-once
+data %>%
+   mutate_all(~case_when(. %in% "NO RISK" ~ '0', 
+                   . == "LOW" ~ '1', 
+                   . == "MOD LOW" ~ '2', 
+                   . == "MOD" ~ '3', 
+                   . == "MOD HIGH" ~ '4',
+                   . == "HIGH" ~ '4', 
+                   TRUE ~ NA_character_))
+
+data$ID = c(1:nrow(data))
+
+data = mutate_all(data, as.numeric)
+data = na.omit(data)
+data
+```
+
+***
+***
+***
+
+##Explore (via regression, variance and correlation) impact of economic factors and cooperation with social workers
+
+###Simple Regression
+
+80/20 split on train and test data sets
+Source: https://www.analytics-tuts.com/how-to-split-train-and-test-data-in-r/
+```{r}
+data$overallx = as_factor(data$overallx)
+tempdat = sort(sample(nrow(data), nrow(data)*.8))
+train<-data[tempdat,]
+test<-data[-tempdat,]
+dim(train)
+dim(test)
+
+tr = select(train, !c(nrisk52,nrisk53,nrisk56,nrisk57))
+te = select(test, !c(nrisk52,nrisk53,nrisk56,nrisk57))
+dim(tr)
+dim(te)
+```
+
+Binomial model and prediction based on all variables
+```{r}
+regmod = glm(overallx~., data=train, family = binomial)
+allvar = predict(regmod, test, "response")
+av = ifelse(allvar>=0.5, 1, 0)
+tally(test$overallx~av, format='percent')
+```
+
+Binomail model and prediction based on all variables except 52, 53, 56, 57
+```{r}
+regmod2 = glm(overallx~., data=tr, family = binomial)
+allvar2 = predict(regmod2, te, "response")
+av2 = ifelse(allvar2>=0.5, 1, 0)
+tally(test$overallx~av2, format='percent')
+```
+
+####ANOVA
+```{r}
+anova(regmod2, regmod)
+```
+
+###Correlation
+
+```{r}
+# tests employment status (52, 53) and economic resources (56, 57)
+econrelated = round(cor(select(data,nrisk52,nrisk53,nrisk56,nrisk57),
+                        select(data,overallx,nrisk1,nrisk2,nrisk3,nrisk4,nrisk5,nrisk6,nrisk7,nrisk8,nrisk9,nrisk10,
+                               nrisk11,nrisk12,nrisk13,nrisk14,nrisk15,nrisk16,nrisk17,nrisk18,nrisk19,nrisk20,
+                               nrisk21,nrisk22,nrisk23,nrisk24,nrisk25,nrisk26,nrisk27,nrisk28,nrisk29,nrisk30,
+                               nrisk31,nrisk32,nrisk33,nrisk34,nrisk35,nrisk36,nrisk37,nrisk38,nrisk39,nrisk40,
+                               nrisk41,nrisk42,nrisk43,nrisk44,nrisk45,nrisk46,nrisk47,nrisk48,nrisk49,nrisk50,
+                               nrisk51,nrisk52,nrisk53,nrisk54,nrisk55,nrisk56,nrisk57,nrisk58,nrisk59
+                               ), use = 'pairwise.complete.obs'), digits = 1)
+corrplot(econrelated, method="shade", type="upper")
+
+# tests recognition of problem (32, 33) and cooperation with agency (36, 37)
+cooprelated = round(cor(select(data,nrisk32,nrisk33,nrisk36,nrisk37),
+                        select(data,overallx,nrisk1,nrisk2,nrisk3,nrisk4,nrisk5,nrisk6,nrisk7,nrisk8,nrisk9,nrisk10,
+                               nrisk11,nrisk12,nrisk13,nrisk14,nrisk15,nrisk16,nrisk17,nrisk18,nrisk19,nrisk20,
+                               nrisk21,nrisk22,nrisk23,nrisk24,nrisk25,nrisk26,nrisk27,nrisk28,nrisk29,nrisk30,
+                               nrisk31,nrisk32,nrisk33,nrisk34,nrisk35,nrisk36,nrisk37,nrisk38,nrisk39,nrisk40,
+                               nrisk41,nrisk42,nrisk43,nrisk44,nrisk45,nrisk46,nrisk47,nrisk48,nrisk49,nrisk50,
+                               nrisk51,nrisk52,nrisk53,nrisk54,nrisk55,nrisk56,nrisk57,nrisk58,nrisk59
+                               ), use = 'pairwise.complete.obs'), digits = 1)
+corrplot(cooprelated, method="shade", type="upper")
+```
+
+
+
+
+
+
+
+
+
+
+
