@@ -20,6 +20,8 @@ library(corrplot)
 library(caret)
 library(caTools)
 library(leaps)
+library(e1071)
+library(effects)
 ```
 
 ```{r, echo = FALSE, warning = FALSE, message = FALSE}
@@ -37,8 +39,8 @@ phasei = mutate_all(phasei, na_if, "n/a")
 
 ```{r}
 phasei$overallx = ifelse(phasei$overallr == "NO RISK" | phasei$overallr == "LOW" | phasei$overallr == "MOD LOW", 0, 1)
-tally(phasei$overallr)
-tally(phasei$overallx)
+#tally(phasei$overallr)
+#tally(phasei$overallx)
 
 data = select(phasei, overallx,nrisk1,nrisk2,nrisk3,nrisk4,nrisk5,nrisk6,nrisk7,nrisk8,nrisk9,nrisk10,nrisk11,nrisk12,nrisk13,nrisk14,nrisk15,nrisk16,nrisk17,nrisk18,nrisk19,nrisk20,nrisk21,nrisk22,nrisk23,nrisk24,nrisk25,nrisk26,nrisk27,nrisk28,nrisk29,nrisk30,nrisk31,nrisk32,nrisk33,nrisk34,nrisk35,nrisk36,nrisk37,nrisk38,nrisk39,nrisk40,nrisk41,nrisk42,nrisk43,nrisk44,nrisk45,nrisk46,nrisk47,nrisk48,nrisk49,nrisk50,nrisk51,nrisk52,nrisk53,nrisk54,nrisk55,nrisk56,nrisk57,nrisk58,nrisk59)
 
@@ -51,12 +53,15 @@ data %>%
                    . == "MOD LOW" ~ '2', 
                    . == "MOD" ~ '3', 
                    . == "MOD HIGH" ~ '4',
-                   . == "HIGH" ~ '4', 
+                   . == "HIGH" ~ '5', 
                    TRUE ~ NA_character_))
 
 data = mutate_all(data, as.numeric)
 data = na.omit(data)
 data
+
+tally(phasei$nrisk1)
+tally(data$nrisk1)
 ```
 
 ***
@@ -70,6 +75,7 @@ data
 80/20 split on train and test data sets
 Source: https://www.analytics-tuts.com/how-to-split-train-and-test-data-in-r/
 ```{r}
+set.seed(9158)
 data$overallx = as_factor(data$overallx)
 tempdat = sort(sample(nrow(data), nrow(data)*.8))
 train<-data[tempdat,]
@@ -85,6 +91,7 @@ dim(te)
 
 Binomial model and prediction based on all variables
 ```{r}
+set.seed(9158)
 regmod = glm(overallx~., data=train, family = binomial)
 summary(regmod)
 allvar = predict(regmod, test, "response")
@@ -94,6 +101,7 @@ tally(test$overallx~av, format='percent')
 
 Binomial model and prediction based on all variables except 52, 53, 56, 57
 ```{r}
+set.seed(9158)
 regmod2 = glm(overallx~., data=tr, family = binomial)
 summary(regmod2)
 allvar2 = predict(regmod2, te, "response")
@@ -105,11 +113,56 @@ tally(test$overallx~av2, format='percent')
 
 All of the variables:
 ```{r}
+set.seed(9158)
+
 fitall = glm(overallx~., family = binomial, data = train)
 backstep = step(fitall, direction = "backward")
-backstepped = predict(backstep, test, "response")
-bk = ifelse(backstepped>=0.5, 1, 0)
-tally(test$overallx~bk, format='percent')
+```
+
+```{r}
+set.seed(9158)
+
+tenfold = trainControl(method = "cv", number = 10)
+
+#based on the best model from the backward step:
+backbest = train(overallx ~ nrisk1 + nrisk5 + nrisk6 + nrisk7 + 
+    nrisk8 + nrisk14 + nrisk15 + nrisk16 + nrisk20 + nrisk22 + 
+    nrisk24 + nrisk25 + nrisk26 + nrisk28 + nrisk29 + nrisk32 + 
+    nrisk33 + nrisk36 + nrisk37 + nrisk41 + nrisk42 + nrisk44 + 
+    nrisk45 + nrisk46 + nrisk50 + nrisk54, data = train, method = "glm", trControl = tenfold)
+
+backbesttest = predict(backbest, test)
+backpred = ifelse(backbesttest>=0.5, 1, 0)
+tally(test$overallx~backpred, format='percent')
+
+backimportance = varImp(backbest, sort=TRUE)
+backimportance
+plot(backimportance)
+
+```
+
+```{r}
+backbestglm = glm(formula = overallx ~ nrisk1 + nrisk5 + nrisk6 + nrisk7 +
+    nrisk8 + nrisk14 + nrisk15 + nrisk16 + nrisk20 + nrisk22 +
+    nrisk24 + nrisk25 + nrisk26 + nrisk28 + nrisk29 + nrisk32 +
+    nrisk33 + nrisk36 + nrisk37 + nrisk41 + nrisk42 + nrisk44 +
+    nrisk45 + nrisk46 + nrisk50 + nrisk54, family = binomial,
+    data = train)
+
+summary(backbestglm)
+
+confint(backbestglm)
+exp(coef(backbestglm))
+
+backbestglmtest = predict(backbestglm, test)
+backpredglm = ifelse(backbestglmtest>=0.5, 1, 0)
+tally(test$overallx~backpredglm, format='percent')
+
+
+```
+
+```{r}
+plot(allEffects(backbestglm))
 ```
 
 All vars except econ:
@@ -126,6 +179,34 @@ tally(test$overallx~ebk, format='percent')
 anova(regmod2, regmod)
 anova(fitall, fitecon)
 ```
+
+####Forward step
+```{r}
+set.seed(9158)
+
+fitbase = glm(overallx~1, family = binomial, data = train)
+forstep = step(fitbase, direction = "forward", scope = formula(fitall))
+```
+
+```{r}
+set.seed(9158)
+#based on the best model from the forward step:
+forbest = train(overallx ~ nrisk36 + nrisk15 + nrisk50 + nrisk1 + 
+    nrisk32 + nrisk54 + nrisk42 + nrisk20 + nrisk8 + nrisk26 + 
+    nrisk46 + nrisk6 + nrisk14 + nrisk7 + nrisk28 + nrisk22 + 
+    nrisk16, data = train, method = "glm", trControl = tenfold)
+
+forbesttest = predict(backbest, test)
+forpred = ifelse(forbesttest>=0.5, 1, 0)
+tally(test$overallx~forpred, format='percent')
+
+summary(forbest)
+
+forimportance = varImp(forbest, sort=TRUE)
+forimportance
+plot(forimportance)
+```
+
 
 ###Correlation
 
@@ -167,6 +248,16 @@ d
 e = filter(c, v >= .5, X2 == "nrisk32" || X2 == "nrisk33" || X2 == "nrisk36" || X2 == "nrisk37")
 e
 ```
+
+```{r}
+highrelated = round(cor(
+              select(data,overallx,nrisk17,nrisk19,nrisk23,nrisk25,nrisk28,nrisk29,nrisk30,nrisk31,nrisk32,nrisk33,nrisk35,nrisk36,nrisk37), 
+              select(data,overallx,nrisk17,nrisk19,nrisk23,nrisk25,nrisk28,nrisk29,nrisk30,nrisk31,nrisk32,nrisk33,nrisk35,nrisk36,nrisk37), use = 'pairwise.complete.obs'), digits = 1)
+
+colnames(highrelated) = c("Overall risk", "Victimization of other children (2)", "Mental/physical/emotional impairment (2)", " Substance abuse (2)", "History of domestic violence (2)", "Parenting skills/knowledge (1)", "Parenting skills/knowledge (2)", "Nurturance (1)","Nurturance (2)","Recognition of problem (1)", "Recognition of problem (2)","Protection of child (2)", "Cooperation (1)","Cooperation (2)")
+rownames(highrelated) = c("Overall risk", "Victimization of other children (2)", "Mental/physical/emotional impairment (2)", " Substance abuse (2)", "History of domestic violence (2)", "Parenting skills/knowledge (1)", "Parenting skills/knowledge (2)", "Nurturance (1)","Nurturance (2)","Recognition of problem (1)", "Recognition of problem (2)","Protection of child (2)", "Cooperation (1)","Cooperation (2)")
+
+corrplot(highrelated, method="shade", type="upper")
 ```
 
 
