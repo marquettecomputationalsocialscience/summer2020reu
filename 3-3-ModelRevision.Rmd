@@ -254,10 +254,10 @@ highrelated = round(cor(
               select(data,overallx,nrisk17,nrisk19,nrisk23,nrisk25,nrisk28,nrisk29,nrisk30,nrisk31,nrisk32,nrisk33,nrisk35,nrisk36,nrisk37), 
               select(data,overallx,nrisk17,nrisk19,nrisk23,nrisk25,nrisk28,nrisk29,nrisk30,nrisk31,nrisk32,nrisk33,nrisk35,nrisk36,nrisk37), use = 'pairwise.complete.obs'), digits = 1)
 
-colnames(highrelated) = c("Overall risk", "Victimization of other children (2)", "Mental/physical/emotional impairment (2)", " Substance abuse (2)", "History of domestic violence (2)", "Parenting skills/knowledge (1)", "Parenting skills/knowledge (2)", "Nurturance (1)","Nurturance (2)","Recognition of problem (1)", "Recognition of problem (2)","Protection of child (2)", "Cooperation (1)","Cooperation (2)")
-rownames(highrelated) = c("Overall risk", "Victimization of other children (2)", "Mental/physical/emotional impairment (2)", " Substance abuse (2)", "History of domestic violence (2)", "Parenting skills/knowledge (1)", "Parenting skills/knowledge (2)", "Nurturance (1)","Nurturance (2)","Recognition of problem (1)", "Recognition of problem (2)","Protection of child (2)", "Cooperation (1)","Cooperation (2)")
+rownames(highrelated) = c("A. Overall risk", "B. Victimization of other children (2)", "C. Mental/physical/emotional impairment (2)", "D. Substance abuse (2)", "E. History of domestic violence (2)", "F. Parenting skills/knowledge (1)", "G. Parenting skills/knowledge (2)", "H. Nurturance (1)","I. Nurturance (2)","J. Recognition of problem (1)", "K. Recognition of problem (2)","L. Protection of child (2)", "M. Cooperation (1)","N. Cooperation (2)")
+colnames(highrelated) = c("A", "B", "C", "D", "E", "F", "G", "H","I","J", "K","L", "M","N")
 
-corrplot(highrelated, method="shade", type="upper")
+corrplot(highrelated, method="shade", type="upper", tl.col = "black", title="Correlation of Subjective Caretaker Qualification Variables", tl.pos = "lt", tl.offset=1,  tl.srt = 0)
 ```
 
 
